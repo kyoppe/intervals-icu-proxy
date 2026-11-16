@@ -52,6 +52,8 @@ interface DatadogMetricSeries {
 
 const UPSTREAM_BASE_URL = "https://intervals.icu/api/v1";
 const DATADOG_METRICS_URL = "https://api.datadoghq.com/api/v2/series";
+const UPSTREAM_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 const DEFAULT_METRIC_PREFIX = "intervals_icu_proxy.";
 const DEFAULT_ENV = "kyo";
 const DEFAULT_SERVICE = "intervals-icu-proxy";
@@ -376,6 +378,22 @@ function upstreamAuthorization(apiKey: string): string {
   return `Basic ${btoa(`API_KEY:${apiKey}`)}`;
 }
 
+function logUpstreamFetchFailure(endpoint: EndpointTemplate, error: unknown): void {
+  const errorName = error instanceof Error && error.name ? error.name : "UnknownError";
+
+  console.error(
+    JSON.stringify({
+      ddtags: "env:kyo,service:intervals-icu-proxy",
+      endpoint,
+      error_name: errorName,
+      event_type: "upstream_fetch_failed",
+      message: "Intervals.icu fetch failed",
+      service: "intervals-icu-proxy",
+      status_code: 502,
+    }),
+  );
+}
+
 async function proxyJson(
   upstreamUrl: URL,
   env: Env,
@@ -395,14 +413,16 @@ async function proxyJson(
       headers: {
         Accept: "application/json",
         Authorization: upstreamAuthorization(apiKey),
+        "User-Agent": UPSTREAM_USER_AGENT,
       },
       method: "GET",
       redirect: "error",
     });
     telemetryState.upstreamLatencyMs = performance.now() - upstreamStartedAt;
-  } catch {
+  } catch (error) {
     telemetryState.upstreamLatencyMs = performance.now() - upstreamStartedAt;
     telemetryState.upstreamError = true;
+    logUpstreamFetchFailure(telemetryState.endpoint, error);
     return errorResponse("upstream_unavailable", 502);
   }
 

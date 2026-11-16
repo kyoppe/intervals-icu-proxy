@@ -51,6 +51,7 @@ interface DatadogMetricSeries {
 }
 
 const UPSTREAM_BASE_URL = "https://intervals.icu/api/v1";
+const UPSTREAM_ORIGIN = "https://intervals.icu";
 const DATADOG_METRICS_URL = "https://api.datadoghq.com/api/v2/series";
 const UPSTREAM_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
@@ -378,6 +379,22 @@ function upstreamAuthorization(apiKey: string): string {
   return `Basic ${btoa(`API_KEY:${apiKey}`)}`;
 }
 
+function getSafeErrorCauseCode(error: unknown): string {
+  if (!(error instanceof Error) || !("cause" in error)) {
+    return "none";
+  }
+
+  const cause = error.cause;
+
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
+    return "none";
+  }
+
+  const code = cause.code;
+
+  return typeof code === "string" && /^[A-Za-z0-9_.-]+$/.test(code) ? code : "none";
+}
+
 function logUpstreamFetchFailure(endpoint: EndpointTemplate, error: unknown): void {
   const errorName = error instanceof Error && error.name ? error.name : "UnknownError";
 
@@ -385,6 +402,7 @@ function logUpstreamFetchFailure(endpoint: EndpointTemplate, error: unknown): vo
     JSON.stringify({
       ddtags: "env:kyo,service:intervals-icu-proxy",
       endpoint,
+      error_cause_code: getSafeErrorCauseCode(error),
       error_name: errorName,
       event_type: "upstream_fetch_failed",
       message: "Intervals.icu fetch failed",
@@ -392,6 +410,47 @@ function logUpstreamFetchFailure(endpoint: EndpointTemplate, error: unknown): vo
       status_code: 502,
     }),
   );
+}
+
+async function fetchUpstream(upstreamUrl: URL, apiKey: string): Promise<Response> {
+  const headers = {
+    Accept: "application/json",
+    Authorization: upstreamAuthorization(apiKey),
+    "User-Agent": UPSTREAM_USER_AGENT,
+  };
+  let currentUrl = upstreamUrl;
+  let response = await fetch(currentUrl, {
+    headers,
+    method: "GET",
+    redirect: "manual",
+  });
+
+  for (let redirectCount = 0; redirectCount < 3; redirectCount += 1) {
+    if (response.status < 300 || response.status >= 400) {
+      return response;
+    }
+
+    const location = response.headers.get("Location");
+
+    if (!location) {
+      return response;
+    }
+
+    const nextUrl = new URL(location, currentUrl);
+
+    if (nextUrl.origin !== UPSTREAM_ORIGIN) {
+      return response;
+    }
+
+    currentUrl = nextUrl;
+    response = await fetch(currentUrl, {
+      headers,
+      method: "GET",
+      redirect: "manual",
+    });
+  }
+
+  return response;
 }
 
 async function proxyJson(
@@ -409,15 +468,7 @@ async function proxyJson(
   const upstreamStartedAt = performance.now();
 
   try {
-    upstreamResponse = await fetch(upstreamUrl, {
-      headers: {
-        Accept: "application/json",
-        Authorization: upstreamAuthorization(apiKey),
-        "User-Agent": UPSTREAM_USER_AGENT,
-      },
-      method: "GET",
-      redirect: "error",
-    });
+    upstreamResponse = await fetchUpstream(upstreamUrl, apiKey);
     telemetryState.upstreamLatencyMs = performance.now() - upstreamStartedAt;
   } catch (error) {
     telemetryState.upstreamLatencyMs = performance.now() - upstreamStartedAt;

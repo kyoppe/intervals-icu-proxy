@@ -217,6 +217,7 @@ function getDatadogLogTags(env: Env): string {
 function logDatadogSubmissionFailure(
   env: Env,
   eventType: "datadog_metrics_rejected" | "datadog_metrics_send_failed",
+  phase: "request_init" | "fetch" | "response",
   statusCode: number,
   error?: unknown,
 ): void {
@@ -224,6 +225,7 @@ function logDatadogSubmissionFailure(
     ddtags: getDatadogLogTags(env),
     event_type: eventType,
     message: "Datadog metrics submission failed",
+    phase,
     service: normalizeTagValue(env.DD_SERVICE, DEFAULT_SERVICE),
     status_code: statusCode,
   };
@@ -240,7 +242,7 @@ async function sendDatadogTelemetry(
   env: Env,
   observation: RequestObservation,
 ): Promise<void> {
-  const apiKey = env.DD_API_KEY;
+  const apiKey = env.DD_API_KEY?.trim();
   const prefix = normalizeMetricPrefix(env.DD_METRIC_PREFIX);
 
   if (!apiKey || !prefix) {
@@ -282,8 +284,10 @@ async function sendDatadogTelemetry(
     series.push(createMetricSeries(prefix, "auth_failures", 1, 1, timestamp, tags));
   }
 
+  let request: Request;
+
   try {
-    const response = await fetch(DATADOG_METRICS_URL, {
+    request = new Request(DATADOG_METRICS_URL, {
       body: JSON.stringify({ series }),
       headers: {
         "Content-Type": "application/json",
@@ -292,11 +296,30 @@ async function sendDatadogTelemetry(
       method: "POST",
       redirect: "error",
     });
+  } catch (error) {
+    logDatadogSubmissionFailure(
+      env,
+      "datadog_metrics_send_failed",
+      "request_init",
+      502,
+      error,
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch(request);
+
     if (!response.ok) {
-      logDatadogSubmissionFailure(env, "datadog_metrics_rejected", response.status);
+      logDatadogSubmissionFailure(
+        env,
+        "datadog_metrics_rejected",
+        "response",
+        response.status,
+      );
     }
   } catch (error) {
-    logDatadogSubmissionFailure(env, "datadog_metrics_send_failed", 502, error);
+    logDatadogSubmissionFailure(env, "datadog_metrics_send_failed", "fetch", 502, error);
     // Telemetry failures must never affect the proxy response.
   }
 }
@@ -306,7 +329,7 @@ function scheduleDatadogTelemetry(
   env: Env,
   observation: RequestObservation,
 ): void {
-  if (!env.DD_API_KEY || !normalizeMetricPrefix(env.DD_METRIC_PREFIX)) {
+  if (!env.DD_API_KEY?.trim() || !normalizeMetricPrefix(env.DD_METRIC_PREFIX)) {
     return;
   }
 

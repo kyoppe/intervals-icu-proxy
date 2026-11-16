@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "iicu-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+  "vars": {
+    "DD_ENV": "kyo",
+    "DD_SERVICE": "intervals-icu-proxy",
+    "DD_METRIC_PREFIX": "test.kyouhei."
+  }
+}

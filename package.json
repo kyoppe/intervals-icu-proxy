@@ -1,0 +1,17 @@
+{
+  "name": "intervals-icu-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bash tests/smoke.sh",
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "version=$(git rev-parse --short HEAD) && wrangler deploy --var DD_VERSION:$version"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261116.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.34.0"
+  }
+}

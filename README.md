@@ -106,16 +106,19 @@ Datadog site is US1. The initial metric settings are configured as:
 - Metric prefix: `test.kyouhei.`
 
 The metric prefix can be changed in the `vars` section of `wrangler.jsonc`.
-It is normalized to one trailing dot. An invalid prefix disables telemetry
-without disabling the proxy.
+It is normalized to one trailing dot and is placed before the fixed
+`intervals_icu_proxy.` namespace. For example, `test.kyouhei.` produces
+`test.kyouhei.intervals_icu_proxy.requests`. If it is unset, the default is
+`intervals_icu_proxy.requests`. An invalid prefix disables telemetry without
+disabling the proxy.
 
 When enabled, the Worker submits these metrics:
 
-- `<prefix>requests` (`count`)
-- `<prefix>request_latency_ms` (`gauge`)
-- `<prefix>upstream_latency_ms` (`gauge`, when an upstream request was made)
-- `<prefix>upstream_errors` (`count`, when an upstream error occurred)
-- `<prefix>auth_failures` (`count`, when authentication failed)
+- `<prefix>intervals_icu_proxy.requests` (`count`)
+- `<prefix>intervals_icu_proxy.request_latency_ms` (`gauge`)
+- `<prefix>intervals_icu_proxy.upstream_latency_ms` (`gauge`, when an upstream request was made)
+- `<prefix>intervals_icu_proxy.upstream_errors` (`count`, when an upstream error occurred)
+- `<prefix>intervals_icu_proxy.auth_failures` (`count`, when authentication failed)
 
 Telemetry tags are limited to endpoint templates, status classes, outcomes,
 environment, service, and the Git version. Request IDs, activity IDs, dates,

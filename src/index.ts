@@ -55,7 +55,7 @@ const UPSTREAM_ORIGIN = "https://intervals.icu";
 const DATADOG_METRICS_URL = "https://api.datadoghq.com/api/v2/series";
 const UPSTREAM_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
-const DEFAULT_METRIC_PREFIX = "intervals_icu_proxy.";
+const METRIC_NAMESPACE = "intervals_icu_proxy.";
 const DEFAULT_ENV = "kyo";
 const DEFAULT_SERVICE = "intervals-icu-proxy";
 const JSON_HEADERS = {
@@ -140,7 +140,7 @@ function getOutcome(status: number, state: TelemetryState): Outcome {
 
 function normalizeMetricPrefix(value: string | undefined): string | null {
   if (value === undefined) {
-    return DEFAULT_METRIC_PREFIX;
+    return "";
   }
 
   const withoutTrailingDots = value.trim().replace(/\.+$/, "");
@@ -153,6 +153,12 @@ function normalizeMetricPrefix(value: string | undefined): string | null {
   }
 
   return `${withoutTrailingDots}.`;
+}
+
+function resolveMetricPrefix(value: string | undefined): string | null {
+  const customPrefix = normalizeMetricPrefix(value);
+
+  return customPrefix === null ? null : `${customPrefix}${METRIC_NAMESPACE}`;
 }
 
 function normalizeTagValue(value: string | undefined, fallback: string): string {
@@ -243,7 +249,7 @@ async function sendDatadogTelemetry(
   observation: RequestObservation,
 ): Promise<void> {
   const apiKey = env.DD_API_KEY?.trim();
-  const prefix = normalizeMetricPrefix(env.DD_METRIC_PREFIX);
+  const prefix = resolveMetricPrefix(env.DD_METRIC_PREFIX);
 
   if (!apiKey || !prefix) {
     return;
@@ -329,7 +335,7 @@ function scheduleDatadogTelemetry(
   env: Env,
   observation: RequestObservation,
 ): void {
-  if (!env.DD_API_KEY?.trim() || !normalizeMetricPrefix(env.DD_METRIC_PREFIX)) {
+  if (!env.DD_API_KEY?.trim() || !resolveMetricPrefix(env.DD_METRIC_PREFIX)) {
     return;
   }
 

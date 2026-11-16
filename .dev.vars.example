@@ -1,10 +1,13 @@
 # Copy this file to .dev.vars for local Wrangler development.
 # Replace only the values in your local, untracked .dev.vars file.
 INTERVALS_API_KEY=replace-with-your-intervals-api-key
-INTERVALS_ATHLETE_ID=0
+# Optional. Set 0, or omit this variable, to use the athlete linked to the API key.
+# INTERVALS_ATHLETE_ID=0
+# Set a different athlete ID to read that athlete if the API key permits it.
+# INTERVALS_ATHLETE_ID=replace-with-your-athlete-id
 PROXY_BEARER_TOKEN=replace-with-a-long-random-token
 
 # Optional Datadog telemetry. Omit DD_API_KEY to disable telemetry completely.
 # DD_API_KEY=replace-with-your-datadog-api-key
-# DD_METRIC_PREFIX=test.kyouhei.
+# DD_METRIC_PREFIX=test.
 # DD_VERSION=your-git-short-commit-hash

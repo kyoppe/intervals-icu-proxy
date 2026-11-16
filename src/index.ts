@@ -56,7 +56,7 @@ const DATADOG_METRICS_URL = "https://api.datadoghq.com/api/v2/series";
 const UPSTREAM_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
 const METRIC_NAMESPACE = "intervals_icu_proxy.";
-const DEFAULT_ENV = "kyo";
+const DEFAULT_ENV = "production";
 const DEFAULT_SERVICE = "intervals-icu-proxy";
 const JSON_HEADERS = {
   "cache-control": "no-store",
@@ -464,18 +464,18 @@ function getSafeErrorCauseCode(error: unknown): string {
   return typeof code === "string" && /^[A-Za-z0-9_.-]+$/.test(code) ? code : "none";
 }
 
-function logUpstreamFetchFailure(endpoint: EndpointTemplate, error: unknown): void {
+function logUpstreamFetchFailure(env: Env, endpoint: EndpointTemplate, error: unknown): void {
   const errorName = error instanceof Error && error.name ? error.name : "UnknownError";
 
   console.error(
     JSON.stringify({
-      ddtags: "env:kyo,service:intervals-icu-proxy",
+      ddtags: getDatadogLogTags(env),
       endpoint,
       error_cause_code: getSafeErrorCauseCode(error),
       error_name: errorName,
       event_type: "upstream_fetch_failed",
       message: "Intervals.icu fetch failed",
-      service: "intervals-icu-proxy",
+      service: normalizeTagValue(env.DD_SERVICE, DEFAULT_SERVICE),
       status_code: 502,
     }),
   );
@@ -542,7 +542,7 @@ async function proxyJson(
   } catch (error) {
     telemetryState.upstreamLatencyMs = performance.now() - upstreamStartedAt;
     telemetryState.upstreamError = true;
-    logUpstreamFetchFailure(telemetryState.endpoint, error);
+    logUpstreamFetchFailure(env, telemetryState.endpoint, error);
     return errorResponse("upstream_unavailable", 502);
   }
 

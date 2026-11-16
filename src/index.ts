@@ -200,6 +200,42 @@ function createMetricSeries(
   return series;
 }
 
+function getDatadogLogTags(env: Env): string {
+  const tags = [
+    `env:${normalizeTagValue(env.DD_ENV, DEFAULT_ENV)}`,
+    `service:${normalizeTagValue(env.DD_SERVICE, DEFAULT_SERVICE)}`,
+  ];
+  const version = env.DD_VERSION?.trim();
+
+  if (version && /^[0-9a-f]{7,40}$/i.test(version)) {
+    tags.push(`version:${version}`);
+  }
+
+  return tags.join(",");
+}
+
+function logDatadogSubmissionFailure(
+  env: Env,
+  eventType: "datadog_metrics_rejected" | "datadog_metrics_send_failed",
+  statusCode: number,
+  error?: unknown,
+): void {
+  const log: Record<string, string | number> = {
+    ddtags: getDatadogLogTags(env),
+    event_type: eventType,
+    message: "Datadog metrics submission failed",
+    service: normalizeTagValue(env.DD_SERVICE, DEFAULT_SERVICE),
+    status_code: statusCode,
+  };
+
+  if (error) {
+    log.error_cause_code = getSafeErrorCauseCode(error);
+    log.error_name = error instanceof Error && error.name ? error.name : "UnknownError";
+  }
+
+  console.error(JSON.stringify(log));
+}
+
 async function sendDatadogTelemetry(
   env: Env,
   observation: RequestObservation,
@@ -247,7 +283,7 @@ async function sendDatadogTelemetry(
   }
 
   try {
-    await fetch(DATADOG_METRICS_URL, {
+    const response = await fetch(DATADOG_METRICS_URL, {
       body: JSON.stringify({ series }),
       headers: {
         "Content-Type": "application/json",
@@ -256,7 +292,11 @@ async function sendDatadogTelemetry(
       method: "POST",
       redirect: "error",
     });
-  } catch {
+    if (!response.ok) {
+      logDatadogSubmissionFailure(env, "datadog_metrics_rejected", response.status);
+    }
+  } catch (error) {
+    logDatadogSubmissionFailure(env, "datadog_metrics_send_failed", 502, error);
     // Telemetry failures must never affect the proxy response.
   }
 }

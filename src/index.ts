@@ -294,7 +294,7 @@ async function sendDatadogTelemetry(
         "DD-API-KEY": apiKey,
       },
       method: "POST",
-      redirect: "error",
+      redirect: "manual",
     });
   } catch (error) {
     logDatadogSubmissionFailure(

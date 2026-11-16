@@ -1,14 +1,22 @@
 # intervals-icu-proxy
 
-A read-only Cloudflare Worker REST proxy for the Intervals.icu API.
+**Languages:** [日本語](README.md) | [English](README.en.md)
 
-The Worker keeps the Intervals.icu API key server-side and translates a static
-Bearer token from Muse into the Basic authentication format required by
-Intervals.icu.
+## 日本語
 
-## Endpoints
+Intervals.icu の読み取り専用 API を、Cloudflare Workers 経由で Muse から利用するための REST プロキシです。
 
-The Worker accepts only these GET endpoints:
+Intervals.icu の API キーは Worker の Secret に保存し、Muse からは Worker 用の Bearer トークンで認証します。Intervals.icu の API キーや Basic 認証情報を Muse に渡す必要はありません。
+
+### 現在の Worker
+
+- Worker 名: `iicu-proxy`
+- URL: Cloudflare アカウントの `workers.dev` サブドメインによって決まります
+- Muse 用の認証: `Authorization: Bearer <PROXY_BEARER_TOKEN>`
+- CORS: 無効
+- 書き込み: なし。GET のみ
+
+### エンドポイント
 
 - `GET /health`
 - `GET /api/athlete`
@@ -17,70 +25,24 @@ The Worker accepts only these GET endpoints:
 - `GET /api/wellness?oldest=YYYY-MM-DD&newest=YYYY-MM-DD`
 - `GET /api/events?oldest=YYYY-MM-DD&newest=YYYY-MM-DD`
 
-`/health` is unauthenticated. Every `/api/*` endpoint requires:
+`/health` は認証不要で、Worker が直接 `{"ok":true}` を返します。`/api/*` は Bearer 認証が必須です。`activities`、`wellness`、`events` の `oldest` と `newest` は必須です。
 
-```text
-Authorization: Bearer <PROXY_BEARER_TOKEN>
-```
+### セットアップ
 
-All other paths return `404`. All methods other than `GET` return `405`.
-CORS is not enabled.
-
-## Worker name and URL
-
-The Worker name is configured in `wrangler.jsonc`:
-
-```jsonc
-"name": "iicu-proxy"
-```
-
-The name becomes the first label of the `workers.dev` hostname. The complete
-URL also includes the `workers.dev` subdomain configured for the Cloudflare
-account:
-
-```text
-https://<worker-name>.<your-workers-subdomain>.workers.dev
-```
-
-When cloning this repository, change `name` to a unique Worker name before
-deploying. Use only letters, numbers, and dashes, with a maximum length of 63
-characters. The deploy command prints the actual URL.
-
-## Requirements
+必要なもの:
 
 - Node.js
 - npm
-- A Cloudflare account
-- Wrangler authentication via `wrangler login`
+- Cloudflare アカウント
+- Wrangler の認証 (`npx wrangler login`)
 
-## Local development
-
-Install dependencies:
+依存関係をインストールします。
 
 ```bash
 npm install
 ```
 
-Create a local, untracked variables file:
-
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-Replace the placeholders in `.dev.vars` with local values. Never commit
-`.dev.vars` or copy its values into source files.
-
-Run the typecheck and local Worker:
-
-```bash
-npm run typecheck
-npm run dev
-```
-
-## Configure production Secrets
-
-Do not put production Secret values in this repository. Set them from your own
-terminal with Wrangler:
+本番 Secret は自分のターミナルから設定してください。
 
 ```bash
 npx wrangler secret put INTERVALS_API_KEY
@@ -88,115 +50,55 @@ npx wrangler secret put INTERVALS_ATHLETE_ID
 npx wrangler secret put PROXY_BEARER_TOKEN
 ```
 
-`INTERVALS_ATHLETE_ID` is optional. If it is not set, the Worker uses `0`,
-which identifies the owner of the API key.
-
-Datadog telemetry is optional. Set the Datadog API key only when telemetry is
-needed:
+`INTERVALS_ATHLETE_ID` を設定しない場合は `0` を使います。Datadog telemetry を有効にする場合だけ、次も設定します。
 
 ```bash
 npx wrangler secret put DD_API_KEY
 ```
 
-If `DD_API_KEY` is not set, the Worker makes no Datadog requests. The default
-Datadog site is US1. The initial metric settings are configured as:
+`DD_API_KEY` がなければ、Datadog への外部送信は発生しません。
 
-- Environment: `kyo`
+### Datadog
+
+公開設定は `wrangler.jsonc` の `vars` にあります。
+
+- Env: `kyo`
 - Service: `intervals-icu-proxy`
-- Metric prefix: `test.kyouhei.`
+- 現在の prefix: `test.kyouhei.`
+- Version: deploy 時の Git short commit hash
 
-The metric prefix can be changed in the `vars` section of `wrangler.jsonc`.
-It is normalized to one trailing dot and is placed before the fixed
-`intervals_icu_proxy.` namespace. For example, `test.kyouhei.` produces
-`test.kyouhei.intervals_icu_proxy.requests`. If it is unset, the default is
-`intervals_icu_proxy.requests`. An invalid prefix disables telemetry without
-disabling the proxy.
+現在のメトリクス名は次の形式です。
 
-When enabled, the Worker submits these metrics:
+```text
+test.kyouhei.intervals_icu_proxy.requests
+test.kyouhei.intervals_icu_proxy.request_latency_ms
+test.kyouhei.intervals_icu_proxy.upstream_latency_ms
+test.kyouhei.intervals_icu_proxy.upstream_errors
+test.kyouhei.intervals_icu_proxy.auth_failures
+```
 
-- `<prefix>intervals_icu_proxy.requests` (`count`)
-- `<prefix>intervals_icu_proxy.request_latency_ms` (`gauge`)
-- `<prefix>intervals_icu_proxy.upstream_latency_ms` (`gauge`, when an upstream request was made)
-- `<prefix>intervals_icu_proxy.upstream_errors` (`count`, when an upstream error occurred)
-- `<prefix>intervals_icu_proxy.auth_failures` (`count`, when authentication failed)
+数日間観測した後に `test.kyouhei.` を外す場合は、`wrangler.jsonc` から `DD_METRIC_PREFIX` を削除して commit・deploy します。既定値は `intervals_icu_proxy.` です。既存の `test.kyouhei.*` メトリクスは削除されません。
 
-Telemetry tags are limited to endpoint templates, status classes, outcomes,
-environment, service, and the Git version. Request IDs, activity IDs, dates,
-query strings, and credentials are not included.
-
-The Worker sends `API_KEY:<INTERVALS_API_KEY>` as HTTP Basic authentication to
-Intervals.icu. The API key, Bearer token, Datadog API key, and Authorization
-headers are not written to application logs or returned in error responses.
-
-## Deploy
-
-Authenticate Wrangler and run the checks:
+### デプロイ
 
 ```bash
 npx wrangler login
 npm run typecheck
-```
-
-The deploy script injects the Git short commit hash as the Datadog `version`
-tag. Create a commit before deploying:
-
-```bash
+npm test
 git status
 git diff
-git commit -m "Deploy iicu proxy"
+git commit
 npm run deploy
 ```
 
-`npm run deploy` stops if there is no Git commit. The deploy command prints the
-Worker URL. Keep that URL separate from Secret values.
+`npm run deploy` は commit の short hash を `DD_VERSION` として注入します。clone した場合は、deploy 前に `wrangler.jsonc` の `name` を自分用の一意な Worker 名へ変更してください。
 
-## Verify with curl
+### Muse に渡す情報
 
-Set the deployed URL and the Bearer token in your local shell only:
+Muse には次を設定します。
 
-```bash
-export WORKER_URL="https://<worker-name>.<your-workers-subdomain>.workers.dev"
-export PROXY_BEARER_TOKEN="<your-local-copy-of-the-proxy-token>"
-```
+- Worker URL
+- Bearer トークン(パスワードマネージャーなどの安全な保管庫から設定)
+- 上記の GET エンドポイント一覧
 
-Check the unauthenticated health endpoint:
-
-```bash
-curl -fsS "$WORKER_URL/health"
-```
-
-Check that the API rejects a request without a Bearer token:
-
-```bash
-curl -i "$WORKER_URL/api/athlete"
-```
-
-Call the authenticated endpoints:
-
-```bash
-curl -fsS \
-  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
-  "$WORKER_URL/api/athlete"
-
-curl -fsS \
-  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
-  "$WORKER_URL/api/activities?oldest=2026-01-01&newest=2026-01-31"
-
-curl -fsS \
-  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
-  "$WORKER_URL/api/activities/<activity-id>"
-
-curl -fsS \
-  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
-  "$WORKER_URL/api/wellness?oldest=2026-01-01&newest=2026-01-31"
-
-curl -fsS \
-  -H "Authorization: Bearer ${PROXY_BEARER_TOKEN}" \
-  "$WORKER_URL/api/events?oldest=2026-01-01&newest=2026-01-31"
-```
-
-## Muse configuration
-
-Muse needs the Worker URL as its base URL. The Intervals.icu API key and the
-proxy Bearer token must stay in the Worker configuration and must not be
-provided to Muse.
+Intervals.icu の API キーは Muse に渡しません。
